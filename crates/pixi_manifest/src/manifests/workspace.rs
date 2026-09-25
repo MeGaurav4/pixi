@@ -134,6 +134,12 @@ impl WorkspaceManifest {
     ///
     /// This is the feature that is added implicitly by the tables at the root
     /// of the project manifest.
+    /// Every feature of the workspace, the default feature included, in
+    /// manifest order.
+    pub fn features(&self) -> &IndexMap<FeatureName, Feature> {
+        &self.features
+    }
+
     pub fn default_feature(&self) -> &Feature {
         self.features
             .get(&FeatureName::Default)
@@ -901,6 +907,9 @@ impl WorkspaceManifestMut<'_> {
         // redundant duplicate solve. Same name + same definition is handled as a
         // no-op below.
         for incoming in platforms {
+            incoming
+                .validate_manifest_virtual_packages()
+                .map_err(|e| miette!(e))?;
             if let Some(existing) = self.workspace.workspace.platforms.iter().find(|existing| {
                 existing.name() != incoming.name() && existing.has_same_definition(incoming)
             }) {
@@ -1101,6 +1110,9 @@ impl WorkspaceManifestMut<'_> {
         // VP/subdir change, so it needs no separate comparison here.
         let before = updated.clone();
         updated.apply_edit(edit).map_err(|e| miette!(e))?;
+        updated
+            .validate_manifest_virtual_packages()
+            .map_err(|e| miette!(e))?;
         if updated.subdir() == before.subdir()
             && updated.declared_virtual_packages() == before.declared_virtual_packages()
         {
@@ -1306,10 +1318,10 @@ impl WorkspaceManifestMut<'_> {
         if pixi_platforms.is_empty() {
             return Ok(IndexSet::new());
         }
+        let added_to_workspace = self.add_workspace_platforms(&pixi_platforms)?;
         self.ensure_inline_environment(feature_name)?;
         let platform_names: IndexSet<PixiPlatformName> =
             pixi_platforms.iter().map(|p| p.name().clone()).collect();
-        let added_to_workspace = self.add_workspace_platforms(&pixi_platforms)?;
         let added_to_feature = self.add_feature_platforms(platform_names, feature_name)?;
         Ok(pixi_platforms
             .into_iter()
